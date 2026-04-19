@@ -14,10 +14,11 @@ Probe, remux, transcode, run JSON transcode graphs. Drop-in on servers
 and pipelines; one static binary, no system deps.
 
 ```sh
-cargo install oxideav-cli           # from crates.io
-# or grab a pre-built binary from the latest release:
-# https://github.com/OxideAV/oxideav-workspace/releases
+cargo install oxideav-cli
 ```
+
+…or grab a pre-built binary from the latest
+[oxideav-workspace release](https://github.com/OxideAV/oxideav-workspace/releases).
 
 ```sh
 oxideav list                            # registered codecs + containers
@@ -34,10 +35,11 @@ on the target machine; oxideplay falls back gracefully if it's
 missing).
 
 ```sh
-cargo install oxideplay             # from crates.io
-# or grab it pre-built from the release archive:
-# https://github.com/OxideAV/oxideav-workspace/releases
+cargo install oxideplay
 ```
+
+…or grab it pre-built from the same
+[oxideav-workspace release archive](https://github.com/OxideAV/oxideav-workspace/releases).
 
 ```sh
 oxideplay path/to/file.mkv
