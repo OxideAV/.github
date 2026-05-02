@@ -132,6 +132,74 @@ local sibling into the workspace via `[patch.crates-io]`, so
 `cargo run -p oxideplay` picks up your local edits without a
 re-publish.
 
+## Reusable CI workflows
+
+Two GitHub Actions reusable workflows live in this repo and are shared
+by every sibling crate so we don't have to keep ~50 copies of the same
+YAML in sync:
+
+* **`crate-ci.yml`** — `cargo build --all-targets` + `cargo test` on
+  the OS matrix (Linux + macOS + Windows by default), `cargo fmt
+  --check`, `cargo clippy --no-deps -- -D warnings`, and an optional
+  miri job.
+* **`crate-release.yml`** — wraps
+  [release-plz](https://release-plz.dev): opens/refreshes the release
+  PR on every push to `master`, then publishes to crates.io + tags the
+  GitHub Release once that PR is merged.
+
+We are still in heavy development, so callers should track `@master`
+(no pinned version yet — there's no `v1` tag).
+
+### Opting in (sibling crate)
+
+Replace the crate's `.github/workflows/ci.yml` with:
+
+```yaml
+name: CI
+on:
+  push: { branches: [master] }
+  pull_request: { branches: [master] }
+jobs:
+  ci:
+    uses: OxideAV/.github/.github/workflows/crate-ci.yml@master
+    with:
+      enable_miri: false
+    secrets: inherit
+```
+
+…and the crate's `.github/workflows/release-plz.yml` with:
+
+```yaml
+name: Release-plz
+on:
+  push: { branches: [master] }
+jobs:
+  release:
+    uses: OxideAV/.github/.github/workflows/crate-release.yml@master
+    secrets: inherit
+```
+
+### `crate-ci.yml` inputs
+
+| Input             | Type    | Default                                           | Purpose                                                  |
+|-------------------|---------|---------------------------------------------------|----------------------------------------------------------|
+| `enable_miri`     | bool    | `false`                                           | Add a miri job on nightly with `-Zmiri-strict-provenance -Zmiri-disable-isolation`. |
+| `extra_test_args` | string  | `""`                                              | Appended verbatim to `cargo test` (e.g. `--features foo`). |
+| `rust_toolchain`  | string  | `"stable"`                                        | Toolchain channel for the test job.                      |
+| `os_matrix`       | string  | `'["ubuntu-latest", "macos-latest", "windows-latest"]'` | JSON array of runner OSes. Override e.g. to drop Windows. |
+
+### `crate-release.yml` inputs
+
+| Input            | Type   | Default    | Purpose                                              |
+|------------------|--------|------------|------------------------------------------------------|
+| `rust_toolchain` | string | `"stable"` | Toolchain installed before `release-plz` runs.       |
+
+### Required secrets (forwarded with `secrets: inherit`)
+
+* `CARGO_REGISTRY_TOKEN` — crates.io publish token (release workflow).
+* `RELEASE_PLZ_TOKEN` (optional) — PAT used so the tag push triggers
+  downstream workflows; falls back to `GITHUB_TOKEN`.
+
 ## License
 
 Every crate is MIT-licensed. Copyright © 2026 Karpelès Lab Inc.

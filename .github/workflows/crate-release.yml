@@ -1,0 +1,85 @@
+name: Reusable crate release (release-plz)
+
+# Reusable release workflow shared by every OxideAV sibling crate. Each
+# crate opts in via:
+#
+#   jobs:
+#     release:
+#       uses: OxideAV/.github/.github/workflows/crate-release.yml@master
+#       secrets: inherit
+#
+# Drives release-plz in two phases:
+#   1. release-plz-pr: opens/updates a single "chore(release): ..." PR
+#      that bumps [package].version and regenerates CHANGELOG.md from
+#      conventional commits. Runs on every push to master.
+#   2. release-plz-release: when the release PR is merged, publishes the
+#      crate to crates.io, then creates the git tag + GitHub Release.
+#
+# Secrets required (forwarded via `secrets: inherit` from the caller):
+#   * CARGO_REGISTRY_TOKEN — crates.io API token with publish permission.
+#   * RELEASE_PLZ_TOKEN (optional) — PAT with repo + workflow scope, if
+#     you want the tag push to trigger downstream workflows.
+
+on:
+  workflow_call:
+    inputs:
+      rust_toolchain:
+        description: "Toolchain channel used to install Rust before release-plz"
+        type: string
+        required: false
+        default: "stable"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-plz-pr:
+    name: release-plz PR
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-plz-pr-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust toolchain (${{ inputs.rust_toolchain }})
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.rust_toolchain }}
+
+      - name: Run release-plz (open/refresh release PR)
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  release-plz-release:
+    name: release-plz release
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-plz-release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust toolchain (${{ inputs.rust_toolchain }})
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.rust_toolchain }}
+
+      - name: Run release-plz (publish + tag + GH release)
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
