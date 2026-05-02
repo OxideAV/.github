@@ -55,7 +55,7 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.os_matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain (${{ inputs.rust_toolchain }})
         uses: dtolnay/rust-toolchain@master
@@ -75,7 +75,7 @@ jobs:
     name: rustfmt + clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain (with rustfmt + clippy)
         uses: dtolnay/rust-toolchain@stable
@@ -98,7 +98,7 @@ jobs:
     if: ${{ inputs.enable_miri }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust nightly + miri
         uses: dtolnay/rust-toolchain@nightly
