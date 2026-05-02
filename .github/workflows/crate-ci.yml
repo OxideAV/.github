@@ -6,24 +6,26 @@ name: Reusable crate CI
 #   jobs:
 #     ci:
 #       uses: OxideAV/.github/.github/workflows/crate-ci.yml@master
-#       with:
-#         enable_miri: false
 #       secrets: inherit
 #
 # Jobs:
 #   * test  — build + cargo test on the OS matrix (default: ubuntu, macos, windows)
 #   * lint  — rustfmt --check + clippy --all-targets -- -D warnings
-#   * miri  — optional, runs `cargo miri test --all-targets` on nightly
-#             with strict-provenance + disabled isolation when enable_miri=true
+#   * miri  — runs `cargo miri test --all-targets` on nightly with
+#             strict-provenance + disabled isolation. Default ON so that
+#             arena/SIMD/raw-ptr UB regressions are caught in CI everywhere
+#             rather than via external audits. Crates that legitimately
+#             can't run miri (heavy FFI, syscalls miri doesn't support)
+#             can opt out with `enable_miri: false`.
 
 on:
   workflow_call:
     inputs:
       enable_miri:
-        description: "Run a miri job on nightly with strict-provenance"
+        description: "Run a miri job on nightly with strict-provenance (default true)"
         type: boolean
         required: false
-        default: false
+        default: true
       extra_test_args:
         description: "Extra args appended to `cargo test`"
         type: string
