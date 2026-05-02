@@ -173,6 +173,13 @@ jobs:
 name: Release-plz
 on:
   push: { branches: [master] }
+
+# Caller must grant the permissions the reusable workflow needs —
+# workflow_call does NOT elevate the calling token.
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   release:
     uses: OxideAV/.github/.github/workflows/crate-release.yml@master
