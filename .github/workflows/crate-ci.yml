@@ -95,66 +95,30 @@ jobs:
 
   miri:
     name: miri (nightly, strict-provenance)
-    if: ${{ inputs.enable_miri }}
+    # Manual-only: miri is slow (5-15 min) and most pushes don't change
+    # unsafe code. To run, go to the Actions tab and trigger the workflow
+    # manually (workflow_dispatch). The per-crate `enable_miri: false`
+    # override still wins for crates that legitimately can't run miri
+    # (heavy FFI, syscalls miri doesn't support).
+    if: ${{ inputs.enable_miri && github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    # Throttled to once per UTC day per branch. Miri is slow (5–15 min)
-    # and most pushes don't change unsafe code, so re-running on every
-    # push wastes CI minutes. The actions/cache key embeds the UTC date;
-    # first run of the day misses the cache + runs miri + saves the
-    # marker, subsequent runs the same day hit the cache + skip. A push
-    # the next UTC day rotates the key + runs again. Branches get their
-    # own throttle (cache is per-branch). To force a re-run on the same
-    # day, push an empty commit or use `gh workflow run`.
     steps:
-      - name: Compute throttle key
-        id: throttle
-        run: echo "key=miri-throttle-${{ github.ref_name }}-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
-
-      - name: Check daily throttle
-        id: cache
-        uses: actions/cache/restore@v4
-        with:
-          path: .miri-throttle-marker
-          key: ${{ steps.throttle.outputs.key }}
-
-      - name: Skip note (already ran today)
-        if: steps.cache.outputs.cache-hit == 'true'
-        run: echo "::notice::Miri already ran today on this branch; skipping. Push an empty commit or 'gh workflow run' to force."
-
       - uses: actions/checkout@v6
-        if: steps.cache.outputs.cache-hit != 'true'
 
       - name: Install Rust nightly + miri
-        if: steps.cache.outputs.cache-hit != 'true'
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
 
       - name: Cargo cache
-        if: steps.cache.outputs.cache-hit != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           key: miri
 
       - name: cargo miri setup
-        if: steps.cache.outputs.cache-hit != 'true'
         run: cargo miri setup
 
       - name: cargo miri test --all-targets
-        if: steps.cache.outputs.cache-hit != 'true'
         env:
           MIRIFLAGS: "-Zmiri-strict-provenance -Zmiri-disable-isolation"
         run: cargo miri test --all-targets
-
-      - name: Write throttle marker
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p .miri-throttle-marker
-          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) commit=${{ github.sha }}" > .miri-throttle-marker/last_run
-
-      - name: Save throttle cache
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .miri-throttle-marker
-          key: ${{ steps.throttle.outputs.key }}
