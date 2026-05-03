@@ -1,0 +1,172 @@
+name: Reusable crate fuzz
+
+# Reusable nightly fuzz workflow shared by OxideAV sibling crates that
+# ship `cargo-fuzz` harnesses under `fuzz/`. Each crate opts in via a
+# tiny shim, e.g.:
+#
+#   # .github/workflows/fuzz.yml
+#   name: Fuzz
+#   on:
+#     schedule:
+#       - cron: "37 4 * * *"   # daily 04:37 UTC, jittered off the hour
+#     workflow_dispatch:        # manual trigger
+#   jobs:
+#     fuzz:
+#       uses: OxideAV/.github/.github/workflows/crate-fuzz.yml@master
+#       with:
+#         extra_packages_apt: "libwebp-dev"
+#         time_budget_seconds: 1800  # 30 min total across all targets
+#       secrets: inherit
+#
+# Behaviour:
+#   * Auto-discovers fuzz targets from `fuzz/fuzz_targets/*.rs` (filename
+#     without `.rs`) unless the caller passes an explicit `targets` list.
+#   * Splits `time_budget_seconds` evenly across discovered targets.
+#   * Persists the libfuzzer corpus across runs via actions/cache so each
+#     run builds on prior coverage.
+#   * On crash, uploads the offending input as a workflow artifact and
+#     fails the job. Subsequent runs will hit the same input from corpus
+#     and re-fail until the bug is fixed.
+
+on:
+  workflow_call:
+    inputs:
+      time_budget_seconds:
+        description: "Total fuzz time across all targets (seconds). Each target gets time_budget / num_targets."
+        type: number
+        required: false
+        default: 1800
+      targets:
+        description: "Comma-separated fuzz target names. Empty = auto-discover from fuzz/fuzz_targets/*.rs."
+        type: string
+        required: false
+        default: ""
+      extra_packages_apt:
+        description: "Space-separated apt packages to install before fuzzing (e.g. 'libwebp-dev libpng-dev')."
+        type: string
+        required: false
+        default: ""
+      extra_packages_brew:
+        description: "Space-separated brew packages to install (only used when os contains 'macos')."
+        type: string
+        required: false
+        default: ""
+      os:
+        description: "Runner OS. Fuzz is Linux-friendly; macOS is supported but rarely needed."
+        type: string
+        required: false
+        default: "ubuntu-latest"
+      sanitizer:
+        description: "libfuzzer sanitizer: address|none|memory|thread. Default address."
+        type: string
+        required: false
+        default: "address"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  fuzz:
+    name: cargo-fuzz (${{ inputs.os }})
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install extra apt packages
+        if: ${{ inputs.extra_packages_apt != '' && contains(inputs.os, 'ubuntu') }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ${{ inputs.extra_packages_apt }}
+
+      - name: Install extra brew packages
+        if: ${{ inputs.extra_packages_brew != '' && contains(inputs.os, 'macos') }}
+        run: |
+          brew install ${{ inputs.extra_packages_brew }}
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Fuzz binaries live in fuzz/target — cache that workspace too.
+          workspaces: ". -> target\nfuzz -> fuzz/target"
+          key: fuzz
+
+      - name: Install cargo-fuzz
+        run: |
+          if ! command -v cargo-fuzz >/dev/null 2>&1; then
+            cargo install cargo-fuzz --locked
+          fi
+
+      - name: Discover targets
+        id: targets
+        run: |
+          if [ -n "${{ inputs.targets }}" ]; then
+            list="${{ inputs.targets }}"
+          else
+            list=$(ls fuzz/fuzz_targets/*.rs 2>/dev/null \
+                   | xargs -n1 basename \
+                   | sed 's/\.rs$//' \
+                   | tr '\n' ',' \
+                   | sed 's/,$//')
+          fi
+          if [ -z "$list" ]; then
+            echo "::error::no fuzz targets discovered under fuzz/fuzz_targets/"
+            exit 1
+          fi
+          count=$(echo "$list" | tr ',' '\n' | wc -l | tr -d ' ')
+          per=$(( ${{ inputs.time_budget_seconds }} / count ))
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "per_target_seconds=$per" >> "$GITHUB_OUTPUT"
+          echo "::notice::fuzz targets: $list (${count} target(s), ${per}s each)"
+
+      - name: Restore fuzz corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: fuzz/corpus
+          # Cache key includes the workflow file hash so the corpus
+          # invalidates when fuzz harnesses change incompatibly.
+          key: fuzz-corpus-${{ runner.os }}-${{ hashFiles('fuzz/fuzz_targets/*.rs') }}
+          restore-keys: |
+            fuzz-corpus-${{ runner.os }}-
+
+      - name: Run fuzz targets
+        id: run
+        run: |
+          set +e
+          mkdir -p fuzz/artifacts
+          fail=0
+          IFS=',' read -ra TARGETS <<< "${{ steps.targets.outputs.list }}"
+          for t in "${TARGETS[@]}"; do
+            echo "::group::fuzz $t (${{ steps.targets.outputs.per_target_seconds }}s)"
+            cargo +nightly fuzz run "$t" \
+              --sanitizer="${{ inputs.sanitizer }}" \
+              -- -max_total_time=${{ steps.targets.outputs.per_target_seconds }}
+            rc=$?
+            echo "::endgroup::"
+            if [ $rc -ne 0 ]; then
+              echo "::error::fuzz target '$t' crashed (exit $rc)"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Upload crash artifacts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-${{ github.run_id }}
+          path: |
+            fuzz/artifacts/**
+            fuzz/crash-*
+          if-no-files-found: ignore
+
+      - name: Save fuzz corpus
+        if: ${{ always() }}
+        uses: actions/cache/save@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ runner.os }}-${{ hashFiles('fuzz/fuzz_targets/*.rs') }}
