@@ -12,20 +12,13 @@ name: Reusable crate CI
 #   * test  — build + cargo test on the OS matrix (default: ubuntu, macos, windows)
 #   * lint  — rustfmt --check + clippy --all-targets -- -D warnings
 #   * miri  — runs `cargo miri test --all-targets` on nightly with
-#             strict-provenance + disabled isolation. Default ON so that
-#             arena/SIMD/raw-ptr UB regressions are caught in CI everywhere
-#             rather than via external audits. Crates that legitimately
-#             can't run miri (heavy FFI, syscalls miri doesn't support)
-#             can opt out with `enable_miri: false`.
+#             strict-provenance + disabled isolation. Manual-only: only
+#             fires when the workflow is triggered via workflow_dispatch
+#             (Actions UI "Run workflow" button).
 
 on:
   workflow_call:
     inputs:
-      enable_miri:
-        description: "Run a miri job on nightly with strict-provenance (default true)"
-        type: boolean
-        required: false
-        default: true
       extra_test_args:
         description: "Extra args appended to `cargo test`"
         type: string
@@ -97,10 +90,8 @@ jobs:
     name: miri (nightly, strict-provenance)
     # Manual-only: miri is slow (5-15 min) and most pushes don't change
     # unsafe code. To run, go to the Actions tab and trigger the workflow
-    # manually (workflow_dispatch). The per-crate `enable_miri: false`
-    # override still wins for crates that legitimately can't run miri
-    # (heavy FFI, syscalls miri doesn't support).
-    if: ${{ inputs.enable_miri && github.event_name == 'workflow_dispatch' }}
+    # manually (workflow_dispatch).
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
