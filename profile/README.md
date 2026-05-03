@@ -54,9 +54,68 @@ per workspace tag.
 
 ---
 
+## Architecture
+
+```mermaid
+graph LR
+    CLI[oxideav<br/>CLI]
+    PLAYER[oxideplay<br/>Player]
+
+    PIPE[oxideav-pipeline<br/>source → transforms → sink]
+
+    SRC[oxideav-source<br/>URI / file / probe]
+    HTTP[oxideav-http]
+    GEN[oxideav-generator<br/>synthetic input]
+
+    CORE[oxideav-core<br/>Decoder/Encoder traits<br/>Demuxer/Muxer traits<br/>CodecRegistry]
+
+    AF[oxideav-audio-filter]
+    IF[oxideav-image-filter]
+    PIX[oxideav-pixfmt]
+
+    SUB[oxideav-subtitle]
+    SCENE[oxideav-scene]
+    SCRIBE[oxideav-scribe<br/>shaper + rasterizer]
+    TTF[oxideav-ttf]
+    OTF[oxideav-otf]
+
+    AUDIO[Audio codecs<br/>aac · ac3 · eac3 · opus<br/>flac · mp3 · vorbis<br/>g.711/722/729 · gsm<br/>shorten · tta · wavpack<br/>cook · dts · wma · …]
+    VIDEO[Video codecs<br/>h.264 · h.265 · h.266<br/>av1 · vp8 · vp9 · vp6<br/>mpeg-1/2/4 · prores<br/>ffv1 · huffyuv · utvideo<br/>cinepak · indeo · svq · …]
+    IMAGE[Image codecs<br/>png · jpeg · webp · gif<br/>jpegxl · jpeg2000 · jpegxs<br/>avif · heif · tiff · bmp · ico]
+    CONT[Containers<br/>mp4 · mkv/webm · ogg<br/>avi · flv · iff · mod/s3m]
+    LIVE[Live transport<br/>rtmp]
+
+    CLI --> PIPE
+    PLAYER --> PIPE
+    PIPE --> SRC
+    PIPE --> CORE
+    PIPE --> AF
+    PIPE --> IF
+    SRC --> HTTP
+    SRC --> GEN
+    CORE --> AUDIO
+    CORE --> VIDEO
+    CORE --> IMAGE
+    CORE --> CONT
+    CORE --> LIVE
+    AF --> CORE
+    IF --> PIX
+    SUB --> SCRIBE
+    SCENE --> SCRIBE
+    SCRIBE --> TTF
+    SCRIBE --> OTF
+```
+
+`oxideav-core` carries the trait surface (`Decoder`, `Encoder`,
+`Demuxer`, `Muxer`) plus the registry. Every codec/container crate
+registers itself at module init; the pipeline executor only sees the
+registry, never any concrete crate.
+
+---
+
 ## Using it as a library
 
-OxideAV is a modular framework shipped as ~55 small crates. Each codec
+OxideAV is a modular framework shipped as ~95 small crates. Each codec
 is its own repository and its own crates.io release, so you pick only
 what you need and their cadence stays independent of the framework.
 
@@ -64,14 +123,14 @@ Single-crate standalone use is the expected case:
 
 ```toml
 [dependencies]
-oxideav-core = "0.0"       # types
-oxideav-codec = "0.0"      # Decoder / Encoder traits + registry
+oxideav-core = "0.1"       # types + Decoder/Encoder traits + registry
 oxideav-g711 = "0.0"       # or any other codec
 ```
 
 ```rust
-use oxideav_codec::CodecRegistry;
-use oxideav_core::{CodecId, CodecParameters, Frame, Packet, TimeBase};
+use oxideav_core::{
+    CodecId, CodecParameters, CodecRegistry, Frame, Packet, TimeBase,
+};
 
 let mut reg = CodecRegistry::new();
 oxideav_g711::register(&mut reg);
@@ -98,28 +157,36 @@ oxideav = "0.0"
 
 | Crate | Role |
 |---|---|
-| [`oxideav-core`](https://github.com/OxideAV/oxideav-core) | Packet / Frame / TimeBase / PixelFormat / Error |
-| [`oxideav-codec`](https://github.com/OxideAV/oxideav-codec) | `Decoder` + `Encoder` traits and registry |
-| [`oxideav-container`](https://github.com/OxideAV/oxideav-container) | `Demuxer` + `Muxer` traits and content-based probe registry |
-| [`oxideav-pixfmt`](https://github.com/OxideAV/oxideav-pixfmt) | Pixel-format conversion, palette quantisation, dither |
-| [`oxideav-pipeline`](https://github.com/OxideAV/oxideav-pipeline) | Source → transforms → sink composition |
+| [`oxideav-core`](https://github.com/OxideAV/oxideav-core) | `Packet` / `Frame` / `TimeBase` / `PixelFormat` / `Error` + `Decoder`/`Encoder`/`Demuxer`/`Muxer` traits + `CodecRegistry` |
+| [`oxideav-pipeline`](https://github.com/OxideAV/oxideav-pipeline) | Source → transforms → sink composition + JSON transcode graph + multithreaded executor |
 | [`oxideav-source`](https://github.com/OxideAV/oxideav-source) | URI resolution, file reader, `BufferedSource` prefetch ring |
 | [`oxideav-http`](https://github.com/OxideAV/oxideav-http) | HTTP(S) source driver (ureq + rustls) |
-| [`oxideav-job`](https://github.com/OxideAV/oxideav-job) | JSON transcode graph + pipelined multithreaded executor |
+| [`oxideav-generator`](https://github.com/OxideAV/oxideav-generator) | Synthetic media source (`generate://`, `xc:`, `pattern:`, `gradient:`, `testsrc:`, …) |
+| [`oxideav-pixfmt`](https://github.com/OxideAV/oxideav-pixfmt) | Pixel-format conversion, palette quantisation, dither, alpha blending |
 | [`oxideav-audio-filter`](https://github.com/OxideAV/oxideav-audio-filter) | Volume / NoiseGate / Echo / Resample / Spectrogram |
-| [`oxideav-id3`](https://github.com/OxideAV/oxideav-id3) | ID3v1/v2.2/v2.3/v2.4 tag parser |
+| [`oxideav-image-filter`](https://github.com/OxideAV/oxideav-image-filter) | Resize / crop / rotate / colour / overlay |
+| [`oxideav-id3`](https://github.com/OxideAV/oxideav-id3) | ID3v1 / v2.2 / v2.3 / v2.4 tag parser |
+| [`oxideav-rtmp`](https://github.com/OxideAV/oxideav-rtmp) | RTMP live-streaming source |
+| [`oxideav-ttf`](https://github.com/OxideAV/oxideav-ttf) | TrueType parser (cmap, GSUB, GPOS, kerning, ligatures) |
+| [`oxideav-otf`](https://github.com/OxideAV/oxideav-otf) | OpenType-CFF parser (Type 2 charstrings) |
+| [`oxideav-scribe`](https://github.com/OxideAV/oxideav-scribe) | Font rasterizer + shaper + line layout (Latin / CJK + GSUB / GPOS) |
+| [`oxideav-scene`](https://github.com/OxideAV/oxideav-scene) | Time-based scene / composition model (PDF pages, NLE timelines) |
 
 ## Format coverage
 
-**Containers** — MP4 · Matroska / WebM · Ogg · AVI · FLAC · MP3 · WAV / slin · IFF / 8SVX · PNG / APNG · GIF · JPEG · WebP · AMV · MOD · S3M
+**Containers** — MP4 · Matroska / WebM · Ogg · AVI · FLV · IFF / 8SVX · MOD · S3M · RTMP (live source)
 
-**Audio codecs** — PCM · AAC-LC · FLAC · Vorbis · Opus · CELT · Speex · MP1 · MP2 · MP3 · GSM · G.711 · G.722 · G.723.1 · G.728 · G.729
+**Audio codecs** — PCM · ADPCM · AAC-LC (with ADTS + LATM/LOAS) · MP1 · MP2 · MP3 · FLAC · Vorbis · Opus · CELT · Speex · GSM · G.711 · G.722 · G.723.1 · G.728 · G.729 · iLBC · AC-3 · E-AC-3 · AC-4 · DTS (Core / EXSS / XCH / XXCH / X96 / XLL) · WMA (v1 / v2 / Pro / Lossless) · Cook · Musepack · WavPack · Shorten · TTA · aptX · MIDI (SMF)
 
-**Video codecs** — MJPEG · FFV1 · MPEG-1 · MPEG-4 Part 2 · H.263 · H.264 (partial) · H.265 (parse) · AV1 (parse) · VP8 · VP9 (partial) · Theora · ProRes 422 · AMV
+**Video codecs** — H.261 · H.263 · H.264 (decode + CABAC encode, High10) · H.265 (decode + 4:4:4 12-bit IDR encode) · H.266 · MPEG-1 · MPEG-2 · MPEG-4 P2 · MS-MPEG-4 · MJPEG (with progressive + arithmetic SOF9) · Theora · Dirac (with OBMC encode) · ProRes (RDD 36 — all 6 profiles) · FFV1 · AV1 (decode) · VP6 · VP8 · VP9 · AMV · HuffYUV · Lagarith · Ut Video · MagicYUV · Cinepak · Sorenson SVQ1 · Indeo (v2 + v3/v4/v5 module-ready) · EVC
 
-**Image codecs** — PNG / APNG · GIF · WebP (lossy + lossless) · JPEG (via MJPEG)
+**Image codecs** — PNG / APNG · GIF · WebP (lossy + lossless + animated) · JPEG (via MJPEG, baseline + progressive + arithmetic) · JPEG XL (decoder) · JPEG 2000 · JPEG XS · AVIF (decoder) · HEIF / HEIC (via H.265 — clap / irot / imir / iovl / grid / auxC) · TIFF · BMP · ICO
 
 **Subtitles** — SRT · WebVTT · ASS / SSA · TTML · SAMI · MicroDVD · MPL2 · MPsub · VPlayer · PJS · AQTitle · JACOsub · RealText · SubViewer 1/2 · EBU STL · PGS · DVB · VobSub
+
+Each crate ships its own corpus + trace harness against an external
+reference (ffmpeg / cwebp / libpng / TurboJPEG / etc.) plus a
+`cargo-fuzz` harness for the fully-functional encode + decode paths.
 
 ---
 
@@ -134,18 +201,22 @@ re-publish.
 
 ## Reusable CI workflows
 
-Two GitHub Actions reusable workflows live in this repo and are shared
-by every sibling crate so we don't have to keep ~50 copies of the same
-YAML in sync:
+Three GitHub Actions reusable workflows live in this repo and are
+shared by every sibling crate so we don't have to keep ~95 copies of
+the same YAML in sync:
 
 * **`crate-ci.yml`** — `cargo build --all-targets` + `cargo test` on
   the OS matrix (Linux + macOS + Windows by default), `cargo fmt
   --check`, `cargo clippy --no-deps -- -D warnings`, and an optional
-  miri job.
+  miri job (rate-limited to once-a-day per repo).
+* **`crate-fuzz.yml`** — daily nightly `cargo-fuzz` run for crates
+  that ship harnesses under `fuzz/`. Auto-discovers targets from
+  `fuzz/fuzz_targets/*.rs`, splits the per-day budget across them,
+  and persists the corpus across runs.
 * **`crate-release.yml`** — wraps
   [release-plz](https://release-plz.dev): opens/refreshes the release
-  PR on every push to `master`, then publishes to crates.io + tags the
-  GitHub Release once that PR is merged.
+  PR on every push to `master`, then publishes to crates.io + tags
+  the GitHub Release once that PR is merged.
 
 We are still in heavy development, so callers should track `@master`
 (no pinned version yet — there's no `v1` tag).
@@ -186,6 +257,23 @@ jobs:
     secrets: inherit
 ```
 
+Optional: add `.github/workflows/fuzz.yml` for nightly fuzz runs:
+
+```yaml
+name: Fuzz
+on:
+  schedule:
+    - cron: "37 4 * * *"   # daily 04:37 UTC, jittered off the hour
+  workflow_dispatch:
+jobs:
+  fuzz:
+    uses: OxideAV/.github/.github/workflows/crate-fuzz.yml@master
+    with:
+      extra_packages_apt: "libwebp-dev"   # whatever the harness dlopens
+      time_budget_seconds: 1800
+    secrets: inherit
+```
+
 ### `crate-ci.yml` inputs
 
 | Input             | Type    | Default                                           | Purpose                                                  |
@@ -194,6 +282,17 @@ jobs:
 | `extra_test_args` | string  | `""`                                              | Appended verbatim to `cargo test` (e.g. `--features foo`). |
 | `rust_toolchain`  | string  | `"stable"`                                        | Toolchain channel for the test job.                      |
 | `os_matrix`       | string  | `'["ubuntu-latest", "macos-latest", "windows-latest"]'` | JSON array of runner OSes. Override e.g. to drop Windows. |
+
+### `crate-fuzz.yml` inputs
+
+| Input                  | Type    | Default | Purpose                                                                                  |
+|------------------------|---------|---------|------------------------------------------------------------------------------------------|
+| `time_budget_seconds`  | number  | `1800`  | Total fuzz time across all targets (each target gets `time_budget / num_targets`).       |
+| `targets`              | string  | `""`    | Comma-separated fuzz target names. Empty = auto-discover from `fuzz/fuzz_targets/*.rs`.  |
+| `extra_packages_apt`   | string  | `""`    | Space-separated apt packages to install before fuzzing (`libwebp-dev libpng-dev` …).     |
+| `extra_packages_brew`  | string  | `""`    | Space-separated brew packages (only used when `os` contains `macos`).                    |
+| `os`                   | string  | `"ubuntu-latest"` | Runner OS. Fuzz is Linux-friendly; macOS is supported but rarely needed.       |
+| `sanitizer`            | string  | `"address"` | libfuzzer sanitizer: `address` / `none` / `memory` / `thread`.                       |
 
 ### `crate-release.yml` inputs
 
