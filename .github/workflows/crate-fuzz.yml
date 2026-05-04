@@ -97,7 +97,15 @@ jobs:
       - name: Install cargo-fuzz
         run: |
           if ! command -v cargo-fuzz >/dev/null 2>&1; then
-            cargo install cargo-fuzz --locked
+            # cargo-fuzz 0.13.1's published Cargo.lock pins rustix 0.36.5,
+            # which fails on current nightly (`rustc_attrs` was tightened
+            # and `rustc_layout_scalar_valid_range_start` is gated). Until
+            # upstream cuts a 0.13.2 release with the refreshed lockfile,
+            # install from a pinned git commit on `main` whose lockfile
+            # already references rustix 0.38.x.
+            cargo install cargo-fuzz --locked \
+              --git https://github.com/rust-fuzz/cargo-fuzz \
+              --rev 40bda1d6a67ae9a95d60624059b427b1ac420282
           fi
 
       - name: Discover targets
