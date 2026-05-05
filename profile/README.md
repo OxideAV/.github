@@ -306,6 +306,18 @@ jobs:
 * `RELEASE_PLZ_TOKEN` (optional) — PAT used so the tag push triggers
   downstream workflows; falls back to `GITHUB_TOKEN`.
 
+## Support the project
+
+OxideAV is an open-source pure-Rust media stack maintained by Karpelès
+Lab Inc. If it saves you C dependency hell or unblocks a Rust-only
+build target you couldn't otherwise reach, please consider supporting
+continued development:
+
+[![Donate](https://img.shields.io/badge/Donate-Stripe-635BFF?logo=stripe&logoColor=white)](https://donate.stripe.com/7sY8wPcnS9dO2Dqgvg4gg01)
+
+GitHub also surfaces this link automatically via the per-repository
+**Sponsor** button (configured in `.github/FUNDING.yml` on this repo).
+
 ## License
 
 Every crate is MIT-licensed. Copyright © 2026 Karpelès Lab Inc.
