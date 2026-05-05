@@ -34,6 +34,21 @@ on:
         type: string
         required: false
         default: '["ubuntu-latest", "macos-latest", "windows-latest"]'
+      extra_packages_apt:
+        description: "Space-separated apt packages to install on Linux (e.g. `ffmpeg libwebp-dev`)"
+        type: string
+        required: false
+        default: ""
+      extra_packages_brew:
+        description: "Space-separated brew formulas to install on macOS"
+        type: string
+        required: false
+        default: ""
+      extra_packages_choco:
+        description: "Space-separated chocolatey packages to install on Windows"
+        type: string
+        required: false
+        default: ""
 
 env:
   CARGO_TERM_COLOR: always
@@ -54,6 +69,20 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ inputs.rust_toolchain }}
+
+      - name: Install extra apt packages (Linux)
+        if: runner.os == 'Linux' && inputs.extra_packages_apt != ''
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ${{ inputs.extra_packages_apt }}
+
+      - name: Install extra brew packages (macOS)
+        if: runner.os == 'macOS' && inputs.extra_packages_brew != ''
+        run: brew install ${{ inputs.extra_packages_brew }}
+
+      - name: Install extra chocolatey packages (Windows)
+        if: runner.os == 'Windows' && inputs.extra_packages_choco != ''
+        run: choco install -y ${{ inputs.extra_packages_choco }}
 
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
