@@ -44,7 +44,7 @@ OxideAV is licensed under the **MIT License**. By contributing you confirm that:
 
 These points are restated as a checklist in the pull-request template; please
 confirm each one. First-time contributors will also be asked to sign the project
-Contributor License Agreement (handled automatically on your first PR).
+[Contributor License Agreement](CLA.md) (handled automatically on your first PR).
 
 ## Practical notes
 
